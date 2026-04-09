@@ -4,29 +4,49 @@ import BottomNav from '../components/BottomNav'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
+/* ── Keyframes injectés une seule fois ── */
+const STYLES = `
+@keyframes sonar {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(2.8); opacity: 0;   }
+}
+@keyframes mic-idle-float {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-4px) scale(1.03); }
+}
+@keyframes spin-ring {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+`
+if (typeof document !== 'undefined' && !document.getElementById('planning-styles')) {
+  const s = document.createElement('style')
+  s.id = 'planning-styles'
+  s.textContent = STYLES
+  document.head.appendChild(s)
+}
+
 /* ── Appel Claude API ── */
 async function transcriptToPlanning(text) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      prompt: `Tu es l'assistante Aliyah pour une maman. À partir de ce texte dicté, extrais TOUTES les tâches mentionnées et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication, sans texte avant ou après.
+      prompt: `Tu es l'assistante Aliyah pour une maman. À partir de ce texte dicté, extrais TOUTES les tâches mentionnées et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
 
 Format strict : [{"heure":"08:00","tache":"Déposer les enfants à l'école","emoji":"🏫","done":false}]
 
 Règles :
-- Inclure TOUTES les tâches, même si beaucoup
-- Si aucune heure précise, invente une heure logique dans la journée
+- Inclure TOUTES les tâches
+- Si aucune heure précise, invente une heure logique
 - Emoji pertinent pour chaque tâche
 - done toujours false
-- Texte : "${text}"`,
+Texte : "${text}"`,
     }),
   })
-
   if (!res.ok) throw new Error('Erreur API')
   const data = await res.json()
   const raw = data.content[0].text.trim()
-  // Extraire le JSON même s'il y a du texte autour
   const match = raw.match(/\[[\s\S]*\]/)
   if (!match) throw new Error('Format JSON invalide')
   return JSON.parse(match[0])
@@ -44,43 +64,136 @@ async function savePlanningToSupabase(tasks, userId) {
   if (error) console.error('Erreur sauvegarde planning:', error)
 }
 
+/* ── Bouton micro avec animation sonar ── */
+function MicButton({ status, onStart, onStop }) {
+  const isListening = status === 'listening'
+  const isLoading   = status === 'loading'
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 120, height: 120 }}>
+
+      {/* Anneaux sonar — visibles uniquement en écoute */}
+      {isListening && [0, 1, 2].map(i => (
+        <span key={i} style={{
+          position: 'absolute',
+          width: 84, height: 84,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(232,84,122,0.35), rgba(244,133,106,0.1))',
+          animation: `sonar 2.2s ease-out ${i * 0.7}s infinite`,
+          pointerEvents: 'none',
+        }} />
+      ))}
+
+      {/* Anneau spinner pendant le chargement */}
+      {isLoading && (
+        <span style={{
+          position: 'absolute',
+          width: 96, height: 96,
+          borderRadius: '50%',
+          border: '3px solid transparent',
+          borderTopColor: 'var(--rose)',
+          borderRightColor: 'var(--coral)',
+          animation: 'spin-ring 0.9s linear infinite',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      <button
+        onClick={isListening ? onStop : onStart}
+        disabled={isLoading}
+        style={{
+          position: 'relative', zIndex: 2,
+          width: 84, height: 84, borderRadius: '50%', border: 'none',
+          background: isListening
+            ? 'linear-gradient(135deg, #c0392b, #e74c3c)'
+            : isLoading
+            ? 'linear-gradient(135deg, #ccc, #aaa)'
+            : 'linear-gradient(135deg, var(--rose), var(--coral))',
+          color: '#fff',
+          cursor: isLoading ? 'not-allowed' : 'pointer',
+          boxShadow: isListening
+            ? '0 0 0 5px rgba(232,84,122,0.25), 0 6px 24px rgba(192,57,43,0.5)'
+            : '0 6px 24px rgba(232,84,122,0.45)',
+          transition: 'background 0.3s, box-shadow 0.3s',
+          animation: !isListening && !isLoading ? 'mic-idle-float 3s ease-in-out infinite' : 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {isLoading ? (
+          /* Icône hourglass SVG */
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M6 2h12M6 22h12M8 2v5l8 5-8 5v5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ) : isListening ? (
+          /* Icône stop */
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        ) : (
+          /* Icône micro */
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <rect x="9" y="2" width="6" height="11" rx="3" fill="white"/>
+            <path d="M5 10a7 7 0 0014 0" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M12 19v3M9 22h6" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+        )}
+      </button>
+    </div>
+  )
+}
+
 /* ── TaskCard ── */
 function TaskCard({ task, index, onToggle }) {
   return (
     <div
-      className="stack-card"
+      onClick={() => onToggle(index)}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '14px',
-        opacity: task.done ? 0.5 : 1,
-        transition: 'opacity 0.3s',
+        display: 'flex', alignItems: 'center', gap: 14,
+        background: task.done ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.75)',
+        border: '1.5px solid rgba(255,200,215,0.5)',
+        borderRadius: 18, padding: '14px 16px',
+        marginBottom: 10,
+        opacity: task.done ? 0.6 : 1,
+        transition: 'opacity 0.25s, background 0.25s',
         cursor: 'pointer',
       }}
-      onClick={() => onToggle(index)}
     >
-      <span style={{ fontSize: '1.6rem' }}>{task.emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--rose)', fontWeight: 700 }}>
-          {task.heure}
-        </div>
-        <div style={{
-          fontSize: '0.95rem',
-          fontWeight: 600,
-          textDecoration: task.done ? 'line-through' : 'none',
-          color: 'var(--text-dark)',
-        }}>
-          {task.tache}
-        </div>
-      </div>
       <div style={{
-        width: 24, height: 24, borderRadius: '50%',
-        border: '2px solid var(--rose)',
-        background: task.done ? 'var(--rose)' : 'transparent',
+        width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+        background: task.done
+          ? 'linear-gradient(135deg, rgba(247,160,122,0.5), rgba(232,84,122,0.5))'
+          : 'rgba(255,200,215,0.3)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, transition: 'background 0.2s',
+        fontSize: 22,
       }}>
-        {task.done && <span style={{ color: '#fff', fontSize: '0.75rem' }}>✓</span>}
+        {task.emoji}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{
+          fontSize: 13, fontWeight: 700, color: 'var(--rose)',
+          marginBottom: 2, letterSpacing: '0.3px',
+        }}>{task.heure}</p>
+        <p style={{
+          fontSize: 15, fontWeight: 600, color: 'var(--text-dark)',
+          textDecoration: task.done ? 'line-through' : 'none',
+        }}>{task.tache}</p>
+      </div>
+
+      <div style={{
+        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+        background: task.done
+          ? 'linear-gradient(135deg, var(--rose), var(--coral))'
+          : 'transparent',
+        border: task.done ? 'none' : '2px solid rgba(232,84,122,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.2s',
+      }}>
+        {task.done && (
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
       </div>
     </div>
   )
@@ -90,25 +203,24 @@ function TaskCard({ task, index, onToggle }) {
 export default function PlanningPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [tasks, setTasks] = useState([])
-  const [status, setStatus] = useState('idle')   // idle | listening | loading | done | error
+  const [tasks, setTasks]       = useState([])
+  const [status, setStatus]     = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [transcript, setTranscript] = useState('')
-  const recognitionRef = useRef(null)
-  const statusRef = useRef('idle')
-  const finalTranscriptRef = useRef('')           // accumule tout ce qui est dit
 
+  const recognitionRef     = useRef(null)
+  const statusRef          = useRef('idle')
+  const finalTranscriptRef = useRef('')
+  const isProcessingRef    = useRef(false)   // évite le double-traitement
+
+  /* Charger planning du jour */
   useEffect(() => {
-    // Charger le planning du jour s'il existe
     async function loadToday() {
       if (!user) return
       const today = new Date().toISOString().split('T')[0]
       const { data } = await supabase
-        .from('plannings')
-        .select('tasks')
-        .eq('user_id', user.id)
-        .eq('date', today)
-        .single()
+        .from('plannings').select('tasks')
+        .eq('user_id', user.id).eq('date', today).single()
       if (data?.tasks?.length > 0) {
         setTasks(data.tasks)
         setStatus('done')
@@ -119,107 +231,100 @@ export default function PlanningPage() {
     return () => recognitionRef.current?.stop()
   }, [user])
 
-  /* ── Traitement après arrêt du micro ── */
-  async function processTranscript() {
+  /* ── Traitement du transcript → Claude ── */
+  async function doProcess() {
+    if (isProcessingRef.current) return   // verrou anti-doublon
+    isProcessingRef.current = true
+
     const text = finalTranscriptRef.current.trim()
     if (!text) {
-      setStatus('idle')
-      statusRef.current = 'idle'
-      return
+      setStatus('idle'); statusRef.current = 'idle'
+      isProcessingRef.current = false; return
     }
-    setStatus('loading')
-    statusRef.current = 'loading'
+    setStatus('loading'); statusRef.current = 'loading'
     try {
       const parsed = await transcriptToPlanning(text)
       setTasks(parsed)
       if (user) await savePlanningToSupabase(parsed, user.id)
-      setStatus('done')
-      statusRef.current = 'done'
-    } catch (err) {
-      setErrorMsg("Je n'ai pas réussi à analyser ton planning. Réessaie 🌸")
-      setStatus('error')
-      statusRef.current = 'error'
+      setStatus('done'); statusRef.current = 'done'
+    } catch {
+      setErrorMsg("Je n'ai pas réussi à analyser. Réessaie 🌸")
+      setStatus('error'); statusRef.current = 'error'
     }
+    isProcessingRef.current = false
   }
 
+  /* ── Démarrer le micro ── */
   function startListening() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      setErrorMsg("Ton navigateur ne supporte pas la reconnaissance vocale. Essaie Chrome.")
-      setStatus('error')
-      return
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) {
+      setErrorMsg("Ton navigateur ne supporte pas le micro. Essaie Chrome.")
+      setStatus('error'); return
     }
 
     finalTranscriptRef.current = ''
+    isProcessingRef.current = false
     setTranscript('')
 
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'fr-FR'
-    recognition.continuous = true        // ← ne se coupe plus automatiquement
-    recognition.interimResults = true    // ← affiche ce qui est dit en temps réel
-    recognitionRef.current = recognition
+    const rec = new SR()
+    rec.lang            = 'fr-FR'
+    rec.continuous      = true   // reste ouvert
+    rec.interimResults  = true   // affichage temps réel
+    recognitionRef.current = rec
 
-    recognition.onstart = () => {
-      setStatus('listening')
-      statusRef.current = 'listening'
-    }
+    rec.onstart = () => { setStatus('listening'); statusRef.current = 'listening' }
 
-    recognition.onresult = (e) => {
+    rec.onresult = (e) => {
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          finalTranscriptRef.current += e.results[i][0].transcript + ' '
-        } else {
-          interim += e.results[i][0].transcript
-        }
+        if (e.results[i].isFinal) finalTranscriptRef.current += e.results[i][0].transcript + ' '
+        else interim += e.results[i][0].transcript
       }
       setTranscript(finalTranscriptRef.current + interim)
     }
 
-    recognition.onerror = (e) => {
-      if (e.error === 'no-speech') return  // ignore silence, on continue
+    rec.onerror = (e) => {
+      if (e.error === 'no-speech') return  // silence → on continue
       setErrorMsg('Erreur micro : ' + e.error)
-      setStatus('error')
-      statusRef.current = 'error'
+      setStatus('error'); statusRef.current = 'error'
     }
 
-    recognition.onend = () => {
-      // Déclenché quand on appuie sur stop OU coupure inattendue
+    rec.onend = () => {
       if (statusRef.current === 'listening') {
-        processTranscript()
+        // Coupure inattendue du navigateur → on relance pour continuer
+        try { rec.start() }
+        catch { doProcess() }   // si le relancement échoue, on traite ce qu'on a
       }
+      // Si status === 'loading', stopListening() a déjà lancé doProcess()
     }
 
-    recognition.start()
+    rec.start()
   }
 
+  /* ── Arrêter le micro (bouton stop) ── */
   function stopListening() {
-    // On passe en 'processing' pour que onend lance le traitement
-    statusRef.current = 'listening'
+    statusRef.current = 'loading'   // bloque le restart dans onend
+    setStatus('loading')
     recognitionRef.current?.stop()
+    doProcess()
   }
 
   function toggleTask(index) {
     setTasks(prev => {
       const updated = prev.map((t, i) => i === index ? { ...t, done: !t.done } : t)
-      // Sauvegarder la mise à jour
       if (user) savePlanningToSupabase(updated, user.id)
       return updated
     })
   }
 
   function reset() {
-    setTasks([])
-    setTranscript('')
-    setStatus('idle')
-    statusRef.current = 'idle'
-    finalTranscriptRef.current = ''
+    setTasks([]); setTranscript('')
+    setStatus('idle'); statusRef.current = 'idle'
+    finalTranscriptRef.current = ''; isProcessingRef.current = false
     setErrorMsg('')
-    // Supprimer le planning du jour
     if (user) {
       const today = new Date().toISOString().split('T')[0]
-      supabase.from('plannings').delete()
-        .eq('user_id', user.id).eq('date', today)
+      supabase.from('plannings').delete().eq('user_id', user.id).eq('date', today)
     }
   }
 
@@ -227,22 +332,18 @@ export default function PlanningPage() {
 
   return (
     <div className="app-shell">
-      <div className="screen" style={{ paddingTop: 0, paddingBottom: 100, gap: 0, justifyContent: 'flex-start' }}>
+      <div className="screen" style={{ paddingTop: 0, paddingBottom: 110, gap: 0, justifyContent: 'flex-start' }}>
 
         {/* ── Header ── */}
         <div style={{
           width: '100%',
           background: 'linear-gradient(135deg, var(--rose), var(--coral))',
           borderRadius: '0 0 28px 28px',
-          padding: '52px 24px 28px',
-          marginBottom: 24,
-          color: '#fff',
-          boxShadow: '0 6px 24px rgba(232,84,122,0.18)',
+          padding: '52px 24px 28px', marginBottom: 24,
+          color: '#fff', boxShadow: '0 6px 24px rgba(232,84,122,0.18)',
         }}>
-          <button
-            onClick={() => navigate('/home')}
-            style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.4rem', cursor: 'pointer', marginBottom: 8 }}
-          >
+          <button onClick={() => navigate('/home')}
+            style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.4rem', cursor: 'pointer', marginBottom: 8 }}>
             ←
           </button>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>📅 Mon Planning</h1>
@@ -254,39 +355,20 @@ export default function PlanningPage() {
         {/* ── Contenu ── */}
         <div style={{ width: '100%', padding: '0 4px' }}>
 
-          {/* Bouton micro — visible sauf quand on a un planning */}
+          {/* Zone micro */}
           {status !== 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
-              <button
-                onClick={status === 'listening' ? stopListening : startListening}
-                disabled={status === 'loading'}
-                style={{
-                  width: 80, height: 80, borderRadius: '50%', border: 'none',
-                  background: status === 'listening'
-                    ? 'linear-gradient(135deg, #e53935, #e35d5b)'
-                    : 'linear-gradient(135deg, var(--rose), var(--coral))',
-                  color: '#fff', fontSize: '2rem',
-                  cursor: status === 'loading' ? 'not-allowed' : 'pointer',
-                  boxShadow: status === 'listening'
-                    ? '0 0 0 14px rgba(232,84,122,0.2), 0 4px 20px rgba(232,84,122,0.4)'
-                    : '0 4px 20px rgba(232,84,122,0.35)',
-                  transition: 'all 0.3s',
-                  animation: status === 'listening' ? 'pulse 1.5s infinite' : 'none',
-                }}
-              >
-                {status === 'loading' ? '⏳' : status === 'listening' ? '⏹' : '🎙'}
-              </button>
+              <MicButton status={status} onStart={startListening} onStop={stopListening} />
 
-              <p style={{ marginTop: 12, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center' }}>
+              <p style={{ marginTop: 8, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center', minHeight: 20 }}>
                 {status === 'idle'      && 'Appuie et dicte ta journée'}
-                {status === 'listening' && 'Je t\'écoute… Appuie ⏹ pour arrêter'}
-                {status === 'loading'   && 'Aliyah analyse ton planning…'}
+                {status === 'listening' && '🔴 À toi… appuie ⏹ quand tu as fini'}
+                {status === 'loading'   && 'Aliyah prépare ton planning…'}
               </p>
 
-              {/* Transcription en temps réel */}
               {transcript && (
-                <div className="card" style={{ marginTop: 16, padding: '12px 16px', width: '100%' }}>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-hint)', margin: 0, lineHeight: 1.5 }}>
+                <div className="card" style={{ marginTop: 14, padding: '12px 16px', width: '100%' }}>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-hint)', margin: 0, lineHeight: 1.55 }}>
                     <em>"{transcript}"</em>
                   </p>
                 </div>
@@ -304,35 +386,34 @@ export default function PlanningPage() {
             </div>
           )}
 
-          {/* Planning généré */}
+          {/* Liste des tâches */}
           {tasks.length > 0 && (
             <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h2 className="section-title" style={{ margin: 0 }}>Ta journée ✨</h2>
-                <span style={{ fontSize: '0.8rem', color: 'var(--rose)', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--rose)', fontWeight: 700 }}>
                   {doneCount}/{tasks.length} faites
                 </span>
               </div>
 
               {/* Barre de progression */}
-              <div style={{ height: 6, background: '#f0e6ea', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
+              <div style={{ height: 7, background: 'rgba(232,84,122,0.1)', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
                 <div style={{
                   height: '100%',
                   width: `${tasks.length ? (doneCount / tasks.length) * 100 : 0}%`,
                   background: 'linear-gradient(90deg, var(--rose), var(--coral))',
-                  borderRadius: 10, transition: 'width 0.4s ease',
+                  borderRadius: 10, transition: 'width 0.5s ease',
                 }} />
               </div>
 
-              {/* Cards en stack */}
-              <div className="stack-container">
+              {/* Cards normales (scrollables) */}
+              <div>
                 {tasks.map((task, i) => (
                   <TaskCard key={i} task={task} index={i} onToggle={toggleTask} />
                 ))}
               </div>
 
-              {/* Bouton nouveau planning */}
-              <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 16 }}>
+              <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 20 }}>
                 🎙 Nouveau planning
               </button>
             </>
