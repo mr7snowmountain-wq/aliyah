@@ -174,7 +174,7 @@ body {
   border: 1.5px solid rgba(255,255,255,0.85);
   border-radius: 20px;
   padding: 14px 16px;
-  margin-bottom: -32px;
+  margin-bottom: -24px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   cursor: pointer;
 }
