@@ -127,13 +127,9 @@ export default function HomePage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ fontSize: 13, color: 'rgba(109,68,85,.7)', marginBottom: 3 }}>{getGreeting()},</p>
-              <h1 style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 30, fontWeight: 600,
-                color: 'var(--text-dark)', lineHeight: 1.1,
-              }}>
-                {nom} 💜
-              </h1>
+             <h1 className="greeting-name">
+  {nom} 💜
+</h1>
               <p style={{ fontSize: 11, color: 'rgba(109,68,85,.6)', marginTop: 5 }}>{date}</p>
             </div>
             <button
