@@ -30,9 +30,8 @@
   --r-xl: 36px;
   --r-full: 9999px;
 
-  --font-display: 'Playfair Display', serif;
-  --font-body:    'DM Sans', system-ui, sans-serif;
-}
+  --font-display: 'Nunito', system-ui, sans-serif;
+--font-body: 'Nunito', system-ui, sans-serif;}
 
 html, body, #root { height: 100%; width: 100%; }
 
