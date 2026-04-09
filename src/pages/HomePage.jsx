@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import BottomNav from '../components/BottomNav'
-import StackScroll from '../components/StackScroll'
+import CardCarousel from '../components/CardCarousel'
 import { supabase } from '../lib/supabase'
 
 /* ── Messages motivants ── */
@@ -187,7 +187,11 @@ export default function HomePage() {
               Chargement…
             </div>
           ) : previewTasks.length > 0 ? (
-            <StackScroll tasks={previewTasks} onToggle={() => navigate('/planning')} />
+            <CardCarousel
+              tasks={previewTasks}
+              onToggle={() => navigate('/planning')}
+              onCardTap={() => navigate('/planning')}
+            />
           ) : (
             /* Aucun planning → invite à en créer un */
             <div

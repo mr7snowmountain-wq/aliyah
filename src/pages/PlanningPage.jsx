@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
-import StackScroll from '../components/StackScroll'
+import CardCarousel from '../components/CardCarousel'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
@@ -343,8 +343,8 @@ export default function PlanningPage() {
                 }} />
               </div>
 
-              {/* Stack scrollable */}
-              <StackScroll tasks={tasks} onToggle={toggleTask} />
+              {/* Carrousel swipeable */}
+              <CardCarousel tasks={tasks} onToggle={toggleTask} />
 
               <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 24 }}>
                 🎙 Nouveau planning
