@@ -29,7 +29,6 @@ function PlaceholderPage({ emoji, title, color }) {
   )
 }
 
-export function PlanningPage()  { return <PlaceholderPage emoji="📅" title="Mon Planning"  /> }
 export function RecettesPage()  { return <PlaceholderPage emoji="🍲" title="Mes Recettes"  /> }
 export function JuridiquePage() { return <PlaceholderPage emoji="⚖️" title="Espace Juridique" /> }
 export function ActivitesPage() { return <PlaceholderPage emoji="🎨" title="Activités Enfant" /> }
