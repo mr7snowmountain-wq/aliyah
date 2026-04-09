@@ -4,30 +4,25 @@ import BottomNav from '../components/BottomNav'
 
 // ─── Appel Claude Haiku ──────────────────────────────────────────────────────
 async function transcriptToPlanning(text) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `Tu es l'assistante Aliyah. À partir de ce texte dicté par une mère, extrais les tâches de la journée et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
+      prompt: `Tu es l'assistante Aliyah. À partir de ce texte dicté par une mère, extrais les tâches de la journée et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
 
 Format strict : [{"heure":"08:00","tache":"Déposer les enfants à l'école","emoji":"🏫","done":false}]
 
 Si aucune heure n'est mentionnée, invente une heure logique.
 Texte : "${text}"`,
-        },
-      ],
     }),
   })
+
+  if (!res.ok) throw new Error('Erreur API')
+  const data = await res.json()
+  const raw = data.content[0].text.trim()
+  return JSON.parse(raw)
+}
+
 
   if (!res.ok) throw new Error('Erreur API Claude')
   const data = await res.json()
