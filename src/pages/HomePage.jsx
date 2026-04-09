@@ -172,7 +172,7 @@ export default function HomePage() {
         </div>
 
         {/* ── Planning du jour ── */}
-        <section className="anim-1" style={{ width: '100%', marginBottom: 24 }}>
+        <section className="anim-1" style={{ width: '100%', marginBottom: 24, position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 className="section-title">Planning du jour 📅</h2>
             <button
