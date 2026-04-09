@@ -25,17 +25,16 @@ Texte : "${text}"`,
 function TaskCard({ task, index, onToggle }) {
   return (
     <div
-      className="card"
+      className="stack-card"
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '14px',
-        padding: '14px 18px',
-        marginBottom: '10px',
         opacity: task.done ? 0.5 : 1,
         transition: 'opacity 0.3s',
         animationDelay: `${index * 0.08}s`,
         animationFillMode: 'both',
+        cursor: 'pointer',
       }}
       onClick={() => onToggle(index)}
     >
@@ -49,7 +48,7 @@ function TaskCard({ task, index, onToggle }) {
             fontSize: '0.95rem',
             fontWeight: 600,
             textDecoration: task.done ? 'line-through' : 'none',
-            color: 'var(--text)',
+            color: 'var(--text-dark)',
           }}
         >
           {task.tache}
@@ -82,6 +81,12 @@ export default function PlanningPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [transcript, setTranscript] = useState('')
   const recognitionRef = useRef(null)
+  const statusRef = useRef('idle')
+
+  // Sync statusRef avec status pour éviter le bug de closure dans onend
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   useEffect(() => {
     return () => recognitionRef.current?.stop()
@@ -101,29 +106,39 @@ export default function PlanningPage() {
     recognition.interimResults = false
     recognitionRef.current = recognition
 
-    recognition.onstart = () => setStatus('listening')
+    recognition.onstart = () => {
+      setStatus('listening')
+      statusRef.current = 'listening'
+    }
 
     recognition.onresult = async (e) => {
       const text = e.results[0][0].transcript
       setTranscript(text)
       setStatus('loading')
+      statusRef.current = 'loading'
       try {
         const parsed = await transcriptToPlanning(text)
         setTasks(parsed)
         setStatus('done')
+        statusRef.current = 'done'
       } catch (err) {
         setErrorMsg("Je n'ai pas réussi à analyser ton planning. Réessaie 🌸")
         setStatus('error')
+        statusRef.current = 'error'
       }
     }
 
     recognition.onerror = (e) => {
       setErrorMsg('Erreur micro : ' + e.error)
       setStatus('error')
+      statusRef.current = 'error'
     }
 
     recognition.onend = () => {
-      if (status === 'listening') setStatus('idle')
+      if (statusRef.current === 'listening') {
+        setStatus('idle')
+        statusRef.current = 'idle'
+      }
     }
 
     recognition.start()
@@ -132,6 +147,7 @@ export default function PlanningPage() {
   function stopListening() {
     recognitionRef.current?.stop()
     setStatus('idle')
+    statusRef.current = 'idle'
   }
 
   function toggleTask(index) {
@@ -144,125 +160,136 @@ export default function PlanningPage() {
     setTasks([])
     setTranscript('')
     setStatus('idle')
+    statusRef.current = 'idle'
     setErrorMsg('')
   }
 
   const doneCount = tasks.filter(t => t.done).length
 
   return (
-    <div className="screen" style={{ paddingBottom: 90 }}>
-      <div style={{
-        background: 'linear-gradient(135deg, var(--rose), var(--coral))',
-        borderRadius: '0 0 28px 28px',
-        padding: '52px 24px 28px',
-        marginBottom: 24,
-        color: '#fff',
-      }}>
-        <button
-          onClick={() => navigate('/home')}
-          style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.4rem', cursor: 'pointer', marginBottom: 8 }}
-        >
-          ←
-        </button>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>📅 Mon Planning</h1>
-        <p style={{ margin: '6px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>
-          Dicte ta journée, je m'occupe du reste 🌸
-        </p>
-      </div>
+    <div className="app-shell">
+      <div className="screen" style={{ paddingTop: 0, paddingBottom: 100, gap: 0, justifyContent: 'flex-start' }}>
 
-      <div style={{ padding: '0 20px' }}>
-        {status !== 'done' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
-            <button
-              onClick={status === 'listening' ? stopListening : startListening}
-              disabled={status === 'loading'}
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                border: 'none',
-                background: status === 'listening'
-                  ? 'linear-gradient(135deg, #e53935, #e35d5b)'
-                  : 'linear-gradient(135deg, var(--rose), var(--coral))',
-                color: '#fff',
-                fontSize: '2rem',
-                cursor: status === 'loading' ? 'not-allowed' : 'pointer',
-                boxShadow: status === 'listening'
-                  ? '0 0 0 12px rgba(232,84,122,0.2), 0 4px 20px rgba(232,84,122,0.4)'
-                  : '0 4px 20px rgba(232,84,122,0.35)',
-                transition: 'all 0.3s',
-                animation: status === 'listening' ? 'pulse 1.5s infinite' : 'none',
-              }}
-            >
-              {status === 'loading' ? '⏳' : status === 'listening' ? '⏹' : '🎙'}
-            </button>
-            <p style={{ marginTop: 12, color: 'var(--text-light)', fontSize: '0.85rem', textAlign: 'center' }}>
-              {status === 'idle' && 'Appuie et dicte ta journée'}
-              {status === 'listening' && "Je t'écoute... Appuie pour arrêter"}
-              {status === 'loading' && 'Aliyah analyse ton planning...'}
-            </p>
+        {/* ── Header ── */}
+        <div style={{
+          width: '100%',
+          background: 'linear-gradient(135deg, var(--rose), var(--coral))',
+          borderRadius: '0 0 28px 28px',
+          padding: '52px 24px 28px',
+          marginBottom: 24,
+          color: '#fff',
+          boxShadow: '0 6px 24px rgba(232,84,122,0.18)',
+        }}>
+          <button
+            onClick={() => navigate('/home')}
+            style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.4rem', cursor: 'pointer', marginBottom: 8 }}
+          >
+            ←
+          </button>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>📅 Mon Planning</h1>
+          <p style={{ margin: '6px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>
+            Dicte ta journée, je m'occupe du reste 🌸
+          </p>
+        </div>
 
-            {transcript && (
-              <div className="card" style={{ marginTop: 16, padding: '12px 16px', width: '100%' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', margin: 0 }}>
-                  <em>"{transcript}"</em>
-                </p>
+        {/* ── Contenu ── */}
+        <div style={{ width: '100%', padding: '0 4px' }}>
+
+          {status !== 'done' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
+              <button
+                onClick={status === 'listening' ? stopListening : startListening}
+                disabled={status === 'loading'}
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: status === 'listening'
+                    ? 'linear-gradient(135deg, #e53935, #e35d5b)'
+                    : 'linear-gradient(135deg, var(--rose), var(--coral))',
+                  color: '#fff',
+                  fontSize: '2rem',
+                  cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+                  boxShadow: status === 'listening'
+                    ? '0 0 0 12px rgba(232,84,122,0.2), 0 4px 20px rgba(232,84,122,0.4)'
+                    : '0 4px 20px rgba(232,84,122,0.35)',
+                  transition: 'all 0.3s',
+                  animation: status === 'listening' ? 'pulse 1.5s infinite' : 'none',
+                }}
+              >
+                {status === 'loading' ? '⏳' : status === 'listening' ? '⏹' : '🎙'}
+              </button>
+              <p style={{ marginTop: 12, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center' }}>
+                {status === 'idle' && 'Appuie et dicte ta journée'}
+                {status === 'listening' && "Je t'écoute... Appuie pour arrêter"}
+                {status === 'loading' && 'Aliyah analyse ton planning...'}
+              </p>
+
+              {transcript && (
+                <div className="card" style={{ marginTop: 16, padding: '12px 16px', width: '100%' }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-hint)', margin: 0 }}>
+                    <em>"{transcript}"</em>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="error-banner" style={{ marginBottom: 20 }}>
+              {errorMsg}
+              <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--rose)', fontWeight: 700, cursor: 'pointer', marginLeft: 8 }}>
+                Réessayer
+              </button>
+            </div>
+          )}
+
+          {tasks.length > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Ta journée ✨
+                </h2>
+                <span style={{ fontSize: '0.8rem', color: 'var(--rose)', fontWeight: 600 }}>
+                  {doneCount}/{tasks.length} faites
+                </span>
               </div>
-            )}
-          </div>
-        )}
 
-        {status === 'error' && (
-          <div className="error-banner" style={{ marginBottom: 20 }}>
-            {errorMsg}
-            <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--rose)', fontWeight: 700, cursor: 'pointer', marginLeft: 8 }}>
-              Réessayer
-            </button>
-          </div>
-        )}
-
-        {tasks.length > 0 && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
-                Ta journée ✨
-              </h2>
-              <span style={{ fontSize: '0.8rem', color: 'var(--rose)', fontWeight: 600 }}>
-                {doneCount}/{tasks.length} faites
-              </span>
-            </div>
-
-            <div style={{
-              height: 6,
-              background: '#f0e6ea',
-              borderRadius: 10,
-              marginBottom: 20,
-              overflow: 'hidden',
-            }}>
               <div style={{
-                height: '100%',
-                width: `${tasks.length ? (doneCount / tasks.length) * 100 : 0}%`,
-                background: 'linear-gradient(90deg, var(--rose), var(--coral))',
+                height: 6,
+                background: '#f0e6ea',
                 borderRadius: 10,
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
+                marginBottom: 20,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${tasks.length ? (doneCount / tasks.length) * 100 : 0}%`,
+                  background: 'linear-gradient(90deg, var(--rose), var(--coral))',
+                  borderRadius: 10,
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
 
-            {tasks.map((task, i) => (
-              <TaskCard key={i} task={task} index={i} onToggle={toggleTask} />
-            ))}
+              <div className="stack-container">
+                {tasks.map((task, i) => (
+                  <TaskCard key={i} task={task} index={i} onToggle={toggleTask} />
+                ))}
+              </div>
 
-            <button
-              onClick={reset}
-              className="btn-ghost"
-              style={{ width: '100%', marginTop: 16 }}
-            >
-              🎙 Nouveau planning
-            </button>
-          </>
-        )}
+              <button
+                onClick={reset}
+                className="btn btn-ghost"
+                style={{ width: '100%', marginTop: 16 }}
+              >
+                🎙 Nouveau planning
+              </button>
+            </>
+          )}
+        </div>
+
       </div>
-
       <BottomNav />
     </div>
   )
