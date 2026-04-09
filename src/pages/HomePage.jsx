@@ -173,11 +173,11 @@ export default function HomePage() {
               Tout voir →
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {PLANNING_DU_JOUR.map((item, i) => (
-              <PlanningCard key={i} item={item} />
-            ))}
-          </div>
+         <div className="stack-container">
+  {PLANNING_DU_JOUR.map((item, i) => (
+    <PlanningCard key={i} item={item} index={i} />
+  ))}
+</div>
         </section>
 
         {/* ── Modules ── */}
