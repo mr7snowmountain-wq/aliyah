@@ -36,33 +36,44 @@ function getGreeting() {
 }
 
 /* ── Composants ── */
-function PlanningCard({ item }) {
+function PlanningCard({ item, index }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14,
-      background: item.done ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.65)',
-      border: '1px solid rgba(255,200,215,0.4)',
-      borderRadius: 16, padding: '12px 16px',
-      opacity: item.done ? 0.55 : 1,
-      transition: 'opacity .2s',
-    }}>
-      <span style={{ fontSize: 22, flexShrink: 0 }}>{item.emoji}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{
-          fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500,
-          color: 'var(--text-dark)',
-          textDecoration: item.done ? 'line-through' : 'none',
-        }}>{item.tache}</p>
-        <p style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 2 }}>{item.heure}</p>
-      </div>
-      <div style={{
-        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-        background: item.done ? 'linear-gradient(135deg,#F7A07A,#E8547A)' : 'transparent',
-        border: item.done ? 'none' : '2px solid rgba(232,84,122,0.35)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, color: 'white',
-      }}>
-        {item.done ? '✓' : ''}
+    <div className="stack-card" style={{ zIndex: 4 - index }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          width: 42, height: 42, borderRadius: 14, flexShrink: 0,
+          background: item.done
+            ? 'linear-gradient(135deg, #F7A07A, #E8547A)'
+            : 'rgba(255,200,215,0.3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 20,
+        }}>
+          {item.emoji}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 14, fontWeight: 600,
+            color: 'var(--text-dark)',
+            textDecoration: item.done ? 'line-through' : 'none',
+            opacity: item.done ? 0.5 : 1,
+          }}>{item.tache}</p>
+          <p style={{
+            fontSize: 11, color: 'var(--text-hint)',
+            marginTop: 2, fontWeight: 500,
+          }}>{item.heure}</p>
+        </div>
+        <div style={{
+          width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+          background: item.done
+            ? 'linear-gradient(135deg,#F7A07A,#E8547A)'
+            : 'transparent',
+          border: item.done ? 'none' : '2px solid rgba(232,84,122,0.3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, color: 'white', fontWeight: 700,
+        }}>
+          {item.done ? '✓' : ''}
+        </div>
       </div>
     </div>
   )
