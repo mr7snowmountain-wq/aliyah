@@ -18,6 +18,9 @@ const STYLES = `
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+/* Stack scroll — cache la scrollbar sur tous navigateurs */
+.tasks-scroll::-webkit-scrollbar { display: none; }
+.tasks-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 `
 if (typeof document !== 'undefined' && !document.getElementById('planning-styles')) {
   const s = document.createElement('style')
@@ -143,26 +146,28 @@ function MicButton({ status, onStart, onStop }) {
 }
 
 /* ── TaskCard ── */
-function TaskCard({ task, index, onToggle }) {
+function TaskCard({ task, onToggle }) {
   return (
     <div
-      onClick={() => onToggle(index)}
+      onClick={onToggle}
       style={{
         display: 'flex', alignItems: 'center', gap: 14,
-        background: task.done ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.75)',
-        border: '1.5px solid rgba(255,200,215,0.5)',
-        borderRadius: 18, padding: '14px 16px',
-        marginBottom: 10,
-        opacity: task.done ? 0.6 : 1,
+        background: task.done ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.82)',
+        border: '1.5px solid rgba(255,200,215,0.55)',
+        borderRadius: 20, padding: '16px 18px',
+        opacity: task.done ? 0.65 : 1,
         transition: 'opacity 0.25s, background 0.25s',
         cursor: 'pointer',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: '0 4px 20px rgba(232,84,122,0.08)',
       }}
     >
       <div style={{
-        width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+        width: 46, height: 46, borderRadius: 14, flexShrink: 0,
         background: task.done
           ? 'linear-gradient(135deg, rgba(247,160,122,0.5), rgba(232,84,122,0.5))'
-          : 'rgba(255,200,215,0.3)',
+          : 'linear-gradient(135deg, rgba(255,200,215,0.4), rgba(255,218,185,0.3))',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 22,
       }}>
@@ -170,24 +175,23 @@ function TaskCard({ task, index, onToggle }) {
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{
-          fontSize: 13, fontWeight: 700, color: 'var(--rose)',
-          marginBottom: 2, letterSpacing: '0.3px',
-        }}>{task.heure}</p>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--rose)', marginBottom: 3, letterSpacing: '0.3px' }}>
+          {task.heure}
+        </p>
         <p style={{
           fontSize: 15, fontWeight: 600, color: 'var(--text-dark)',
           textDecoration: task.done ? 'line-through' : 'none',
-        }}>{task.tache}</p>
+        }}>
+          {task.tache}
+        </p>
       </div>
 
       <div style={{
-        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-        background: task.done
-          ? 'linear-gradient(135deg, var(--rose), var(--coral))'
-          : 'transparent',
-        border: task.done ? 'none' : '2px solid rgba(232,84,122,0.4)',
+        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+        background: task.done ? 'linear-gradient(135deg, var(--rose), var(--coral))' : 'transparent',
+        border: task.done ? 'none' : '2px solid rgba(232,84,122,0.35)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'all 0.2s',
+        transition: 'all 0.25s',
       }}>
         {task.done && (
           <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
@@ -195,6 +199,59 @@ function TaskCard({ task, index, onToggle }) {
           </svg>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ── Stack scrollable style iPhone Wallet ── */
+function TaskStack({ tasks, onToggle }) {
+  const CARD_H    = 82    // hauteur visible de chaque carte (px)
+  const PEEK      = 14    // combien on voit de la carte suivante
+  const total     = tasks.length
+  // On montre ~3 cartes dans le "stack" avant que l'utilisateur scroll
+  const visibleH  = CARD_H + (Math.min(total - 1, 5) * PEEK) + 24
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      {/* Conteneur scroll momentum style iOS */}
+      <div
+        className="tasks-scroll"
+        style={{
+          overflowY: 'auto',
+          maxHeight: visibleH,
+          WebkitOverflowScrolling: 'touch',  // momentum iOS
+          position: 'relative',
+          paddingBottom: 8,
+        }}
+      >
+        {tasks.map((task, i) => (
+          <div
+            key={i}
+            style={{
+              /* Chaque carte "dépasse" sous la précédente de PEEK px */
+              marginTop: i === 0 ? 0 : -(CARD_H - PEEK),
+              position: 'relative',
+              zIndex: total - i,
+              /* Scale légèrement réduit pour les cartes derrière */
+              transform: `scale(${1 - i * 0.015})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.2s ease',
+            }}
+          >
+            <TaskCard task={task} onToggle={() => onToggle(i)} />
+          </div>
+        ))}
+      </div>
+
+      {/* Dégradé en bas pour indiquer qu'il y a plus de cartes */}
+      {total > 3 && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+          background: 'linear-gradient(to top, rgba(255,240,245,0.95), transparent)',
+          pointerEvents: 'none',
+          borderRadius: '0 0 20px 20px',
+        }} />
+      )}
     </div>
   )
 }
@@ -406,12 +463,8 @@ export default function PlanningPage() {
                 }} />
               </div>
 
-              {/* Cards normales (scrollables) */}
-              <div>
-                {tasks.map((task, i) => (
-                  <TaskCard key={i} task={task} index={i} onToggle={toggleTask} />
-                ))}
-              </div>
+              {/* Stack scrollable style iPhone */}
+              <TaskStack tasks={tasks} onToggle={toggleTask} />
 
               <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 20 }}>
                 🎙 Nouveau planning
