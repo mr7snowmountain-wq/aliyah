@@ -164,9 +164,7 @@ export default function HomePage() {
         {/* ── Planning du jour ── */}
         <section className="anim-1" style={{ width: '100%', marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--text-dark)' }}>
-              Planning du jour 📅
-            </h2>
+           <h2 className="section-title">Planning du jour 📅</h2>
             <button
               onClick={() => navigate('/planning')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--rose)', fontSize: 12, fontWeight: 600 }}>
