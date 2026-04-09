@@ -1,26 +1,24 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
+import StackScroll from '../components/StackScroll'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-/* ── Keyframes injectés une seule fois ── */
+/* ── Keyframes ── */
 const STYLES = `
 @keyframes sonar {
-  0%   { transform: scale(1);   opacity: 0.7; }
-  100% { transform: scale(2.8); opacity: 0;   }
+  0%   { transform: scale(1);   opacity: 0.65; }
+  100% { transform: scale(2.8); opacity: 0;    }
 }
-@keyframes mic-idle-float {
-  0%, 100% { transform: translateY(0px) scale(1); }
-  50%       { transform: translateY(-4px) scale(1.03); }
+@keyframes mic-float {
+  0%, 100% { transform: translateY(0)   scale(1);    }
+  50%       { transform: translateY(-5px) scale(1.03); }
 }
 @keyframes spin-ring {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
-/* Stack scroll — cache la scrollbar sur tous navigateurs */
-.tasks-scroll::-webkit-scrollbar { display: none; }
-.tasks-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 `
 if (typeof document !== 'undefined' && !document.getElementById('planning-styles')) {
   const s = document.createElement('style')
@@ -29,74 +27,64 @@ if (typeof document !== 'undefined' && !document.getElementById('planning-styles
   document.head.appendChild(s)
 }
 
-/* ── Appel Claude API ── */
+/* ── Appel Claude ── */
 async function transcriptToPlanning(text) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      prompt: `Tu es l'assistante Aliyah pour une maman. À partir de ce texte dicté, extrais TOUTES les tâches mentionnées et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
+      prompt: `Tu es l'assistante Aliyah pour une maman. À partir de ce texte dicté, extrais TOUTES les tâches et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
 
 Format strict : [{"heure":"08:00","tache":"Déposer les enfants à l'école","emoji":"🏫","done":false}]
 
-Règles :
-- Inclure TOUTES les tâches
-- Si aucune heure précise, invente une heure logique
-- Emoji pertinent pour chaque tâche
-- done toujours false
+Règles : inclure TOUTES les tâches, inventer une heure logique si non précisée, emoji pertinent, done=false.
 Texte : "${text}"`,
     }),
   })
   if (!res.ok) throw new Error('Erreur API')
-  const data = await res.json()
-  const raw = data.content[0].text.trim()
+  const data  = await res.json()
+  const raw   = data.content[0].text.trim()
   const match = raw.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error('Format JSON invalide')
+  if (!match) throw new Error('JSON introuvable')
   return JSON.parse(match[0])
 }
 
-/* ── Sauvegarde Supabase ── */
-async function savePlanningToSupabase(tasks, userId) {
+/* ── Supabase ── */
+async function savePlanning(tasks, userId) {
   const today = new Date().toISOString().split('T')[0]
-  const { error } = await supabase
-    .from('plannings')
-    .upsert(
-      { user_id: userId, date: today, tasks, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id,date' }
-    )
-  if (error) console.error('Erreur sauvegarde planning:', error)
+  const { error } = await supabase.from('plannings').upsert(
+    { user_id: userId, date: today, tasks, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id,date' }
+  )
+  if (error) console.error('Save error:', error)
 }
 
-/* ── Bouton micro avec animation sonar ── */
+/* ── Bouton micro ── */
 function MicButton({ status, onStart, onStop }) {
   const isListening = status === 'listening'
   const isLoading   = status === 'loading'
 
   return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 120, height: 120 }}>
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 130, height: 130 }}>
 
-      {/* Anneaux sonar — visibles uniquement en écoute */}
+      {/* Anneaux sonar quand on écoute */}
       {isListening && [0, 1, 2].map(i => (
         <span key={i} style={{
-          position: 'absolute',
-          width: 84, height: 84,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(232,84,122,0.35), rgba(244,133,106,0.1))',
-          animation: `sonar 2.2s ease-out ${i * 0.7}s infinite`,
+          position: 'absolute', width: 84, height: 84, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(232,84,122,0.3), rgba(244,133,106,0.08))',
+          animation: `sonar 2s ease-out ${i * 0.65}s infinite`,
           pointerEvents: 'none',
         }} />
       ))}
 
-      {/* Anneau spinner pendant le chargement */}
+      {/* Spinner de chargement */}
       {isLoading && (
         <span style={{
-          position: 'absolute',
-          width: 96, height: 96,
-          borderRadius: '50%',
-          border: '3px solid transparent',
+          position: 'absolute', width: 100, height: 100, borderRadius: '50%',
+          border: '3px solid rgba(232,84,122,0.15)',
           borderTopColor: 'var(--rose)',
           borderRightColor: 'var(--coral)',
-          animation: 'spin-ring 0.9s linear infinite',
+          animation: 'spin-ring 1s linear infinite',
           pointerEvents: 'none',
         }} />
       )}
@@ -107,33 +95,27 @@ function MicButton({ status, onStart, onStop }) {
         style={{
           position: 'relative', zIndex: 2,
           width: 84, height: 84, borderRadius: '50%', border: 'none',
+          /* Gradient rose/coral même pendant le chargement */
           background: isListening
             ? 'linear-gradient(135deg, #c0392b, #e74c3c)'
-            : isLoading
-            ? 'linear-gradient(135deg, #ccc, #aaa)'
             : 'linear-gradient(135deg, var(--rose), var(--coral))',
           color: '#fff',
           cursor: isLoading ? 'not-allowed' : 'pointer',
           boxShadow: isListening
-            ? '0 0 0 5px rgba(232,84,122,0.25), 0 6px 24px rgba(192,57,43,0.5)'
-            : '0 6px 24px rgba(232,84,122,0.45)',
+            ? '0 0 0 5px rgba(232,84,122,0.2), 0 6px 24px rgba(192,57,43,0.45)'
+            : '0 6px 28px rgba(232,84,122,0.5)',
           transition: 'background 0.3s, box-shadow 0.3s',
-          animation: !isListening && !isLoading ? 'mic-idle-float 3s ease-in-out infinite' : 'none',
+          animation: (!isListening && !isLoading) ? 'mic-float 3s ease-in-out infinite' : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: isLoading ? '1.6rem' : '1.8rem',
+          opacity: isLoading ? 0.85 : 1,
         }}
       >
-        {isLoading ? (
-          /* Icône hourglass SVG */
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2h12M6 22h12M8 2v5l8 5-8 5v5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ) : isListening ? (
-          /* Icône stop */
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+        {isLoading ? '🌸' : isListening ? (
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
             <rect x="6" y="6" width="12" height="12" rx="2"/>
           </svg>
         ) : (
-          /* Icône micro */
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <rect x="9" y="2" width="6" height="11" rx="3" fill="white"/>
             <path d="M5 10a7 7 0 0014 0" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
@@ -145,153 +127,45 @@ function MicButton({ status, onStart, onStop }) {
   )
 }
 
-/* ── TaskCard ── */
-function TaskCard({ task, onToggle }) {
-  return (
-    <div
-      onClick={onToggle}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        background: task.done ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.82)',
-        border: '1.5px solid rgba(255,200,215,0.55)',
-        borderRadius: 20, padding: '16px 18px',
-        opacity: task.done ? 0.65 : 1,
-        transition: 'opacity 0.25s, background 0.25s',
-        cursor: 'pointer',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: '0 4px 20px rgba(232,84,122,0.08)',
-      }}
-    >
-      <div style={{
-        width: 46, height: 46, borderRadius: 14, flexShrink: 0,
-        background: task.done
-          ? 'linear-gradient(135deg, rgba(247,160,122,0.5), rgba(232,84,122,0.5))'
-          : 'linear-gradient(135deg, rgba(255,200,215,0.4), rgba(255,218,185,0.3))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 22,
-      }}>
-        {task.emoji}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--rose)', marginBottom: 3, letterSpacing: '0.3px' }}>
-          {task.heure}
-        </p>
-        <p style={{
-          fontSize: 15, fontWeight: 600, color: 'var(--text-dark)',
-          textDecoration: task.done ? 'line-through' : 'none',
-        }}>
-          {task.tache}
-        </p>
-      </div>
-
-      <div style={{
-        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-        background: task.done ? 'linear-gradient(135deg, var(--rose), var(--coral))' : 'transparent',
-        border: task.done ? 'none' : '2px solid rgba(232,84,122,0.35)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'all 0.25s',
-      }}>
-        {task.done && (
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Stack scrollable style iPhone Wallet ── */
-function TaskStack({ tasks, onToggle }) {
-  const CARD_H    = 82    // hauteur visible de chaque carte (px)
-  const PEEK      = 14    // combien on voit de la carte suivante
-  const total     = tasks.length
-  // On montre ~3 cartes dans le "stack" avant que l'utilisateur scroll
-  const visibleH  = CARD_H + (Math.min(total - 1, 5) * PEEK) + 24
-
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      {/* Conteneur scroll momentum style iOS */}
-      <div
-        className="tasks-scroll"
-        style={{
-          overflowY: 'auto',
-          maxHeight: visibleH,
-          WebkitOverflowScrolling: 'touch',  // momentum iOS
-          position: 'relative',
-          paddingBottom: 8,
-        }}
-      >
-        {tasks.map((task, i) => (
-          <div
-            key={i}
-            style={{
-              /* Chaque carte "dépasse" sous la précédente de PEEK px */
-              marginTop: i === 0 ? 0 : -(CARD_H - PEEK),
-              position: 'relative',
-              zIndex: total - i,
-              /* Scale légèrement réduit pour les cartes derrière */
-              transform: `scale(${1 - i * 0.015})`,
-              transformOrigin: 'top center',
-              transition: 'transform 0.2s ease',
-            }}
-          >
-            <TaskCard task={task} onToggle={() => onToggle(i)} />
-          </div>
-        ))}
-      </div>
-
-      {/* Dégradé en bas pour indiquer qu'il y a plus de cartes */}
-      {total > 3 && (
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
-          background: 'linear-gradient(to top, rgba(255,240,245,0.95), transparent)',
-          pointerEvents: 'none',
-          borderRadius: '0 0 20px 20px',
-        }} />
-      )}
-    </div>
-  )
-}
-
-/* ── Page principale ── */
+/* ── Page ── */
 export default function PlanningPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const [tasks, setTasks]       = useState([])
-  const [status, setStatus]     = useState('idle')
-  const [errorMsg, setErrorMsg] = useState('')
+  const { user }  = useAuth()
+
+  const [tasks,      setTasks]      = useState([])
+  const [status,     setStatus]     = useState('idle')
+  const [errorMsg,   setErrorMsg]   = useState('')
   const [transcript, setTranscript] = useState('')
 
-  const recognitionRef     = useRef(null)
   const statusRef          = useRef('idle')
   const finalTranscriptRef = useRef('')
-  const isProcessingRef    = useRef(false)   // évite le double-traitement
+  const isProcessingRef    = useRef(false)
 
   /* Charger planning du jour */
   useEffect(() => {
-    async function loadToday() {
-      if (!user) return
-      const today = new Date().toISOString().split('T')[0]
-      const { data } = await supabase
-        .from('plannings').select('tasks')
-        .eq('user_id', user.id).eq('date', today).single()
-      if (data?.tasks?.length > 0) {
-        setTasks(data.tasks)
-        setStatus('done')
-        statusRef.current = 'done'
-      }
-    }
-    loadToday()
-    return () => recognitionRef.current?.stop()
+    if (!user) return
+    const today = new Date().toISOString().split('T')[0]
+    supabase.from('plannings').select('tasks')
+      .eq('user_id', user.id).eq('date', today).single()
+      .then(({ data }) => {
+        if (data?.tasks?.length > 0) {
+          setTasks(data.tasks)
+          setStatus('done'); statusRef.current = 'done'
+        }
+      })
+    return () => stopCurrentRecognition()
   }, [user])
 
-  /* ── Traitement du transcript → Claude ── */
+  function stopCurrentRecognition() {
+    try { window.__aliyahRec?.stop() } catch {}
+    window.__aliyahRec = null
+  }
+
+  /* ── Traitement vers Claude ── */
   async function doProcess() {
-    if (isProcessingRef.current) return   // verrou anti-doublon
+    if (isProcessingRef.current) return
     isProcessingRef.current = true
+    stopCurrentRecognition()
 
     const text = finalTranscriptRef.current.trim()
     if (!text) {
@@ -302,7 +176,7 @@ export default function PlanningPage() {
     try {
       const parsed = await transcriptToPlanning(text)
       setTasks(parsed)
-      if (user) await savePlanningToSupabase(parsed, user.id)
+      if (user) await savePlanning(parsed, user.id)
       setStatus('done'); statusRef.current = 'done'
     } catch {
       setErrorMsg("Je n'ai pas réussi à analyser. Réessaie 🌸")
@@ -311,65 +185,71 @@ export default function PlanningPage() {
     isProcessingRef.current = false
   }
 
-  /* ── Démarrer le micro ── */
-  function startListening() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) {
-      setErrorMsg("Ton navigateur ne supporte pas le micro. Essaie Chrome.")
-      setStatus('error'); return
-    }
-
-    finalTranscriptRef.current = ''
-    isProcessingRef.current = false
-    setTranscript('')
-
+  /* ── Créer une instance SR fraîche ── */
+  function buildRecognition() {
+    const SR  = window.SpeechRecognition || window.webkitSpeechRecognition
     const rec = new SR()
-    rec.lang            = 'fr-FR'
-    rec.continuous      = true   // reste ouvert
-    rec.interimResults  = true   // affichage temps réel
-    recognitionRef.current = rec
+    rec.lang           = 'fr-FR'
+    rec.continuous     = false   // false = plus simple + évite duplication
+    rec.interimResults = true
+    window.__aliyahRec = rec
 
     rec.onstart = () => { setStatus('listening'); statusRef.current = 'listening' }
 
     rec.onresult = (e) => {
+      // e.resultIndex garantit qu'on ne retraite pas les anciens résultats
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalTranscriptRef.current += e.results[i][0].transcript + ' '
-        else interim += e.results[i][0].transcript
+        if (e.results[i].isFinal) {
+          finalTranscriptRef.current += e.results[i][0].transcript + ' '
+        } else {
+          interim = e.results[i][0].transcript
+        }
       }
+      // Afficher seulement le nouveau texte, pas tout l'accumulé (évite la répétition visuelle)
       setTranscript(finalTranscriptRef.current + interim)
     }
 
     rec.onerror = (e) => {
-      if (e.error === 'no-speech') return  // silence → on continue
+      if (e.error === 'no-speech') return  // silence → redémarre
       setErrorMsg('Erreur micro : ' + e.error)
       setStatus('error'); statusRef.current = 'error'
     }
 
     rec.onend = () => {
       if (statusRef.current === 'listening') {
-        // Coupure inattendue du navigateur → on relance pour continuer
-        try { rec.start() }
-        catch { doProcess() }   // si le relancement échoue, on traite ce qu'on a
+        // Coupure navigateur → NOUVELLE instance propre + relance
+        buildRecognition().start()
       }
-      // Si status === 'loading', stopListening() a déjà lancé doProcess()
+      // Si status = 'loading', stopListening() gère tout
     }
 
-    rec.start()
+    return rec
   }
 
-  /* ── Arrêter le micro (bouton stop) ── */
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) {
+      setErrorMsg("Ton navigateur ne supporte pas le micro. Essaie Chrome.")
+      setStatus('error'); return
+    }
+    finalTranscriptRef.current = ''
+    isProcessingRef.current    = false
+    setTranscript('')
+    buildRecognition().start()
+  }
+
   function stopListening() {
     statusRef.current = 'loading'   // bloque le restart dans onend
     setStatus('loading')
-    recognitionRef.current?.stop()
+    stopCurrentRecognition()
     doProcess()
   }
 
   function toggleTask(index) {
     setTasks(prev => {
       const updated = prev.map((t, i) => i === index ? { ...t, done: !t.done } : t)
-      if (user) savePlanningToSupabase(updated, user.id)
+      if (user) savePlanning(updated, user.id)
       return updated
     })
   }
@@ -391,7 +271,7 @@ export default function PlanningPage() {
     <div className="app-shell">
       <div className="screen" style={{ paddingTop: 0, paddingBottom: 110, gap: 0, justifyContent: 'flex-start' }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{
           width: '100%',
           background: 'linear-gradient(135deg, var(--rose), var(--coral))',
@@ -409,7 +289,6 @@ export default function PlanningPage() {
           </p>
         </div>
 
-        {/* ── Contenu ── */}
         <div style={{ width: '100%', padding: '0 4px' }}>
 
           {/* Zone micro */}
@@ -417,9 +296,9 @@ export default function PlanningPage() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
               <MicButton status={status} onStart={startListening} onStop={stopListening} />
 
-              <p style={{ marginTop: 8, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center', minHeight: 20 }}>
+              <p style={{ marginTop: 8, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center', minHeight: 22 }}>
                 {status === 'idle'      && 'Appuie et dicte ta journée'}
-                {status === 'listening' && '🔴 À toi… appuie ⏹ quand tu as fini'}
+                {status === 'listening' && '🔴 Je t\'écoute… appuie ⏹ quand tu as fini'}
                 {status === 'loading'   && 'Aliyah prépare ton planning…'}
               </p>
 
@@ -437,13 +316,14 @@ export default function PlanningPage() {
           {status === 'error' && (
             <div className="error-banner" style={{ marginBottom: 20 }}>
               {errorMsg}
-              <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--rose)', fontWeight: 700, cursor: 'pointer', marginLeft: 8 }}>
+              <button onClick={reset}
+                style={{ background: 'none', border: 'none', color: 'var(--rose)', fontWeight: 700, cursor: 'pointer', marginLeft: 8 }}>
                 Réessayer
               </button>
             </div>
           )}
 
-          {/* Liste des tâches */}
+          {/* Planning */}
           {tasks.length > 0 && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -463,10 +343,10 @@ export default function PlanningPage() {
                 }} />
               </div>
 
-              {/* Stack scrollable style iPhone */}
-              <TaskStack tasks={tasks} onToggle={toggleTask} />
+              {/* Stack scrollable */}
+              <StackScroll tasks={tasks} onToggle={toggleTask} />
 
-              <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 20 }}>
+              <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 24 }}>
                 🎙 Nouveau planning
               </button>
             </>
