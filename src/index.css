@@ -159,3 +159,80 @@ body {
 .anim-4 { animation: fadeUp .5s  .4s  ease both; }
 .anim-5 { animation: fadeUp .5s  .5s  ease both; }
 .scale-in { animation: scaleIn .4s ease both; }
+.stack-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 16px;
+}
+
+.stack-card {
+  position: relative;
+  width: 100%;
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1.5px solid rgba(255,255,255,0.85);
+  border-radius: 20px;
+  padding: 14px 16px;
+  margin-bottom: -32px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.stack-card:nth-child(1) {
+  z-index: 4;
+  box-shadow: 0 8px 24px rgba(232,84,122,0.18);
+  transform: scale(1) translateY(0px);
+}
+.stack-card:nth-child(2) {
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(232,84,122,0.12);
+  transform: scale(0.97) translateY(8px);
+  opacity: 0.92;
+}
+.stack-card:nth-child(3) {
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(232,84,122,0.08);
+  transform: scale(0.94) translateY(16px);
+  opacity: 0.75;
+}
+.stack-card:nth-child(4) {
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(232,84,122,0.05);
+  transform: scale(0.91) translateY(24px);
+  opacity: 0.55;
+}
+
+.stack-card:nth-child(1):hover {
+  transform: scale(1.01) translateY(-2px);
+  box-shadow: 0 12px 32px rgba(232,84,122,0.25);
+}
+
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 16px;
+  letter-spacing: -0.3px;
+}
+
+.greeting-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 32px;
+  font-weight: 600;
+  font-style: italic;
+  background: linear-gradient(135deg, #E8547A, #F7A07A);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+}
+
+.motivant-text {
+  font-family: 'Playfair Display', serif;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--text-mid);
+  line-height: 1.6;
+}
