@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
 
-// ─── Appel Claude Haiku ──────────────────────────────────────────────────────
 async function transcriptToPlanning(text) {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -23,14 +22,6 @@ Texte : "${text}"`,
   return JSON.parse(raw)
 }
 
-
-  if (!res.ok) throw new Error('Erreur API Claude')
-  const data = await res.json()
-  const raw = data.content[0].text.trim()
-  return JSON.parse(raw)
-}
-
-// ─── Composant carte tâche ────────────────────────────────────────────────────
 function TaskCard({ task, index, onToggle }) {
   return (
     <div
@@ -84,16 +75,14 @@ function TaskCard({ task, index, onToggle }) {
   )
 }
 
-// ─── Page principale ──────────────────────────────────────────────────────────
 export default function PlanningPage() {
   const navigate = useNavigate()
   const [tasks, setTasks] = useState([])
-  const [status, setStatus] = useState('idle') // idle | listening | loading | done | error
+  const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [transcript, setTranscript] = useState('')
   const recognitionRef = useRef(null)
 
-  // Nettoyage au démontage
   useEffect(() => {
     return () => recognitionRef.current?.stop()
   }, [])
@@ -162,7 +151,6 @@ export default function PlanningPage() {
 
   return (
     <div className="screen" style={{ paddingBottom: 90 }}>
-      {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg, var(--rose), var(--coral))',
         borderRadius: '0 0 28px 28px',
@@ -183,8 +171,6 @@ export default function PlanningPage() {
       </div>
 
       <div style={{ padding: '0 20px' }}>
-
-        {/* Bouton micro */}
         {status !== 'done' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
             <button
@@ -212,11 +198,10 @@ export default function PlanningPage() {
             </button>
             <p style={{ marginTop: 12, color: 'var(--text-light)', fontSize: '0.85rem', textAlign: 'center' }}>
               {status === 'idle' && 'Appuie et dicte ta journée'}
-              {status === 'listening' && 'Je t\'écoute... Appuie pour arrêter'}
+              {status === 'listening' && "Je t'écoute... Appuie pour arrêter"}
               {status === 'loading' && 'Aliyah analyse ton planning...'}
             </p>
 
-            {/* Transcript */}
             {transcript && (
               <div className="card" style={{ marginTop: 16, padding: '12px 16px', width: '100%' }}>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', margin: 0 }}>
@@ -227,7 +212,6 @@ export default function PlanningPage() {
           </div>
         )}
 
-        {/* Erreur */}
         {status === 'error' && (
           <div className="error-banner" style={{ marginBottom: 20 }}>
             {errorMsg}
@@ -237,7 +221,6 @@ export default function PlanningPage() {
           </div>
         )}
 
-        {/* Planning généré */}
         {tasks.length > 0 && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -249,7 +232,6 @@ export default function PlanningPage() {
               </span>
             </div>
 
-            {/* Barre de progression */}
             <div style={{
               height: 6,
               background: '#f0e6ea',
@@ -279,7 +261,6 @@ export default function PlanningPage() {
             </button>
           </>
         )}
-
       </div>
 
       <BottomNav />
