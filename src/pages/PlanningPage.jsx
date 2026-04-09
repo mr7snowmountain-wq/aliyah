@@ -1,27 +1,50 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/BottomNav'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 
+/* ── Appel Claude API ── */
 async function transcriptToPlanning(text) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      prompt: `Tu es l'assistante Aliyah. À partir de ce texte dicté par une mère, extrais les tâches de la journée et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication.
+      prompt: `Tu es l'assistante Aliyah pour une maman. À partir de ce texte dicté, extrais TOUTES les tâches mentionnées et retourne UNIQUEMENT un tableau JSON valide, sans markdown, sans explication, sans texte avant ou après.
 
 Format strict : [{"heure":"08:00","tache":"Déposer les enfants à l'école","emoji":"🏫","done":false}]
 
-Si aucune heure n'est mentionnée, invente une heure logique.
-Texte : "${text}"`,
+Règles :
+- Inclure TOUTES les tâches, même si beaucoup
+- Si aucune heure précise, invente une heure logique dans la journée
+- Emoji pertinent pour chaque tâche
+- done toujours false
+- Texte : "${text}"`,
     }),
   })
 
   if (!res.ok) throw new Error('Erreur API')
   const data = await res.json()
   const raw = data.content[0].text.trim()
-  return JSON.parse(raw)
+  // Extraire le JSON même s'il y a du texte autour
+  const match = raw.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error('Format JSON invalide')
+  return JSON.parse(match[0])
 }
 
+/* ── Sauvegarde Supabase ── */
+async function savePlanningToSupabase(tasks, userId) {
+  const today = new Date().toISOString().split('T')[0]
+  const { error } = await supabase
+    .from('plannings')
+    .upsert(
+      { user_id: userId, date: today, tasks, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,date' }
+    )
+  if (error) console.error('Erreur sauvegarde planning:', error)
+}
+
+/* ── TaskCard ── */
 function TaskCard({ task, index, onToggle }) {
   return (
     <div
@@ -32,8 +55,6 @@ function TaskCard({ task, index, onToggle }) {
         gap: '14px',
         opacity: task.done ? 0.5 : 1,
         transition: 'opacity 0.3s',
-        animationDelay: `${index * 0.08}s`,
-        animationFillMode: 'both',
         cursor: 'pointer',
       }}
       onClick={() => onToggle(index)}
@@ -43,54 +64,83 @@ function TaskCard({ task, index, onToggle }) {
         <div style={{ fontSize: '0.75rem', color: 'var(--rose)', fontWeight: 700 }}>
           {task.heure}
         </div>
-        <div
-          style={{
-            fontSize: '0.95rem',
-            fontWeight: 600,
-            textDecoration: task.done ? 'line-through' : 'none',
-            color: 'var(--text-dark)',
-          }}
-        >
+        <div style={{
+          fontSize: '0.95rem',
+          fontWeight: 600,
+          textDecoration: task.done ? 'line-through' : 'none',
+          color: 'var(--text-dark)',
+        }}>
           {task.tache}
         </div>
       </div>
-      <div
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: '50%',
-          border: '2px solid var(--rose)',
-          background: task.done ? 'var(--rose)' : 'transparent',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'background 0.2s',
-        }}
-      >
+      <div style={{
+        width: 24, height: 24, borderRadius: '50%',
+        border: '2px solid var(--rose)',
+        background: task.done ? 'var(--rose)' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'background 0.2s',
+      }}>
         {task.done && <span style={{ color: '#fff', fontSize: '0.75rem' }}>✓</span>}
       </div>
     </div>
   )
 }
 
+/* ── Page principale ── */
 export default function PlanningPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [tasks, setTasks] = useState([])
-  const [status, setStatus] = useState('idle')
+  const [status, setStatus] = useState('idle')   // idle | listening | loading | done | error
   const [errorMsg, setErrorMsg] = useState('')
   const [transcript, setTranscript] = useState('')
   const recognitionRef = useRef(null)
   const statusRef = useRef('idle')
-
-  // Sync statusRef avec status pour éviter le bug de closure dans onend
-  useEffect(() => {
-    statusRef.current = status
-  }, [status])
+  const finalTranscriptRef = useRef('')           // accumule tout ce qui est dit
 
   useEffect(() => {
+    // Charger le planning du jour s'il existe
+    async function loadToday() {
+      if (!user) return
+      const today = new Date().toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('plannings')
+        .select('tasks')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .single()
+      if (data?.tasks?.length > 0) {
+        setTasks(data.tasks)
+        setStatus('done')
+        statusRef.current = 'done'
+      }
+    }
+    loadToday()
     return () => recognitionRef.current?.stop()
-  }, [])
+  }, [user])
+
+  /* ── Traitement après arrêt du micro ── */
+  async function processTranscript() {
+    const text = finalTranscriptRef.current.trim()
+    if (!text) {
+      setStatus('idle')
+      statusRef.current = 'idle'
+      return
+    }
+    setStatus('loading')
+    statusRef.current = 'loading'
+    try {
+      const parsed = await transcriptToPlanning(text)
+      setTasks(parsed)
+      if (user) await savePlanningToSupabase(parsed, user.id)
+      setStatus('done')
+      statusRef.current = 'done'
+    } catch (err) {
+      setErrorMsg("Je n'ai pas réussi à analyser ton planning. Réessaie 🌸")
+      setStatus('error')
+      statusRef.current = 'error'
+    }
+  }
 
   function startListening() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -100,10 +150,13 @@ export default function PlanningPage() {
       return
     }
 
+    finalTranscriptRef.current = ''
+    setTranscript('')
+
     const recognition = new SpeechRecognition()
     recognition.lang = 'fr-FR'
-    recognition.continuous = false
-    recognition.interimResults = false
+    recognition.continuous = true        // ← ne se coupe plus automatiquement
+    recognition.interimResults = true    // ← affiche ce qui est dit en temps réel
     recognitionRef.current = recognition
 
     recognition.onstart = () => {
@@ -111,33 +164,29 @@ export default function PlanningPage() {
       statusRef.current = 'listening'
     }
 
-    recognition.onresult = async (e) => {
-      const text = e.results[0][0].transcript
-      setTranscript(text)
-      setStatus('loading')
-      statusRef.current = 'loading'
-      try {
-        const parsed = await transcriptToPlanning(text)
-        setTasks(parsed)
-        setStatus('done')
-        statusRef.current = 'done'
-      } catch (err) {
-        setErrorMsg("Je n'ai pas réussi à analyser ton planning. Réessaie 🌸")
-        setStatus('error')
-        statusRef.current = 'error'
+    recognition.onresult = (e) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          finalTranscriptRef.current += e.results[i][0].transcript + ' '
+        } else {
+          interim += e.results[i][0].transcript
+        }
       }
+      setTranscript(finalTranscriptRef.current + interim)
     }
 
     recognition.onerror = (e) => {
+      if (e.error === 'no-speech') return  // ignore silence, on continue
       setErrorMsg('Erreur micro : ' + e.error)
       setStatus('error')
       statusRef.current = 'error'
     }
 
     recognition.onend = () => {
+      // Déclenché quand on appuie sur stop OU coupure inattendue
       if (statusRef.current === 'listening') {
-        setStatus('idle')
-        statusRef.current = 'idle'
+        processTranscript()
       }
     }
 
@@ -145,15 +194,18 @@ export default function PlanningPage() {
   }
 
   function stopListening() {
+    // On passe en 'processing' pour que onend lance le traitement
+    statusRef.current = 'listening'
     recognitionRef.current?.stop()
-    setStatus('idle')
-    statusRef.current = 'idle'
   }
 
   function toggleTask(index) {
-    setTasks(prev =>
-      prev.map((t, i) => (i === index ? { ...t, done: !t.done } : t))
-    )
+    setTasks(prev => {
+      const updated = prev.map((t, i) => i === index ? { ...t, done: !t.done } : t)
+      // Sauvegarder la mise à jour
+      if (user) savePlanningToSupabase(updated, user.id)
+      return updated
+    })
   }
 
   function reset() {
@@ -161,7 +213,14 @@ export default function PlanningPage() {
     setTranscript('')
     setStatus('idle')
     statusRef.current = 'idle'
+    finalTranscriptRef.current = ''
     setErrorMsg('')
+    // Supprimer le planning du jour
+    if (user) {
+      const today = new Date().toISOString().split('T')[0]
+      supabase.from('plannings').delete()
+        .eq('user_id', user.id).eq('date', today)
+    }
   }
 
   const doneCount = tasks.filter(t => t.done).length
@@ -195,24 +254,21 @@ export default function PlanningPage() {
         {/* ── Contenu ── */}
         <div style={{ width: '100%', padding: '0 4px' }}>
 
+          {/* Bouton micro — visible sauf quand on a un planning */}
           {status !== 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
               <button
                 onClick={status === 'listening' ? stopListening : startListening}
                 disabled={status === 'loading'}
                 style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: '50%',
-                  border: 'none',
+                  width: 80, height: 80, borderRadius: '50%', border: 'none',
                   background: status === 'listening'
                     ? 'linear-gradient(135deg, #e53935, #e35d5b)'
                     : 'linear-gradient(135deg, var(--rose), var(--coral))',
-                  color: '#fff',
-                  fontSize: '2rem',
+                  color: '#fff', fontSize: '2rem',
                   cursor: status === 'loading' ? 'not-allowed' : 'pointer',
                   boxShadow: status === 'listening'
-                    ? '0 0 0 12px rgba(232,84,122,0.2), 0 4px 20px rgba(232,84,122,0.4)'
+                    ? '0 0 0 14px rgba(232,84,122,0.2), 0 4px 20px rgba(232,84,122,0.4)'
                     : '0 4px 20px rgba(232,84,122,0.35)',
                   transition: 'all 0.3s',
                   animation: status === 'listening' ? 'pulse 1.5s infinite' : 'none',
@@ -220,15 +276,17 @@ export default function PlanningPage() {
               >
                 {status === 'loading' ? '⏳' : status === 'listening' ? '⏹' : '🎙'}
               </button>
+
               <p style={{ marginTop: 12, color: 'var(--text-soft)', fontSize: '0.85rem', textAlign: 'center' }}>
-                {status === 'idle' && 'Appuie et dicte ta journée'}
-                {status === 'listening' && "Je t'écoute... Appuie pour arrêter"}
-                {status === 'loading' && 'Aliyah analyse ton planning...'}
+                {status === 'idle'      && 'Appuie et dicte ta journée'}
+                {status === 'listening' && 'Je t\'écoute… Appuie ⏹ pour arrêter'}
+                {status === 'loading'   && 'Aliyah analyse ton planning…'}
               </p>
 
+              {/* Transcription en temps réel */}
               {transcript && (
                 <div className="card" style={{ marginTop: 16, padding: '12px 16px', width: '100%' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-hint)', margin: 0 }}>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-hint)', margin: 0, lineHeight: 1.5 }}>
                     <em>"{transcript}"</em>
                   </p>
                 </div>
@@ -236,6 +294,7 @@ export default function PlanningPage() {
             </div>
           )}
 
+          {/* Erreur */}
           {status === 'error' && (
             <div className="error-banner" style={{ marginBottom: 20 }}>
               {errorMsg}
@@ -245,44 +304,35 @@ export default function PlanningPage() {
             </div>
           )}
 
+          {/* Planning généré */}
           {tasks.length > 0 && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 className="section-title" style={{ margin: 0 }}>
-                  Ta journée ✨
-                </h2>
+                <h2 className="section-title" style={{ margin: 0 }}>Ta journée ✨</h2>
                 <span style={{ fontSize: '0.8rem', color: 'var(--rose)', fontWeight: 600 }}>
                   {doneCount}/{tasks.length} faites
                 </span>
               </div>
 
-              <div style={{
-                height: 6,
-                background: '#f0e6ea',
-                borderRadius: 10,
-                marginBottom: 20,
-                overflow: 'hidden',
-              }}>
+              {/* Barre de progression */}
+              <div style={{ height: 6, background: '#f0e6ea', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
                 <div style={{
                   height: '100%',
                   width: `${tasks.length ? (doneCount / tasks.length) * 100 : 0}%`,
                   background: 'linear-gradient(90deg, var(--rose), var(--coral))',
-                  borderRadius: 10,
-                  transition: 'width 0.4s ease',
+                  borderRadius: 10, transition: 'width 0.4s ease',
                 }} />
               </div>
 
+              {/* Cards en stack */}
               <div className="stack-container">
                 {tasks.map((task, i) => (
                   <TaskCard key={i} task={task} index={i} onToggle={toggleTask} />
                 ))}
               </div>
 
-              <button
-                onClick={reset}
-                className="btn btn-ghost"
-                style={{ width: '100%', marginTop: 16 }}
-              >
+              {/* Bouton nouveau planning */}
+              <button onClick={reset} className="btn btn-ghost" style={{ width: '100%', marginTop: 16 }}>
                 🎙 Nouveau planning
               </button>
             </>

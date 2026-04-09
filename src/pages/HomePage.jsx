@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import BottomNav from '../components/BottomNav'
+import { supabase } from '../lib/supabase'
 
-/* ── Données statiques ── */
+/* ── Messages motivants ── */
 const MESSAGES_MOTIVANTS = [
   "Chaque petit pas compte. Tu avances, maman. 💪",
   "Tu es la héroïne de votre histoire. 🌟",
@@ -10,14 +12,7 @@ const MESSAGES_MOTIVANTS = [
   "Ta force est une leçon quotidienne pour ton enfant. 💜",
   "Tu n'as pas besoin d'être parfaite. Juste présente. 💕",
   "Les mamans fortes élèvent des enfants forts. ✨",
-  "Respirе. Tu gères tout avec amour. 🌺",
-]
-
-const PLANNING_DU_JOUR = [
-  { heure: '08:00', tache: 'Déposer à l\'école', emoji: '🏫', done: true  },
-  { heure: '10:30', tache: 'Rdv CNSS',           emoji: '📋', done: false },
-  { heure: '14:00', tache: 'Courses du marché',  emoji: '🛒', done: false },
-  { heure: '18:00', tache: 'Activité enfant',    emoji: '🎨', done: false },
+  "Respire. Tu gères tout avec amour. 🌺",
 ]
 
 const MODULES = [
@@ -35,7 +30,7 @@ function getGreeting() {
   return 'Bonsoir'
 }
 
-/* ── Composants ── */
+/* ── PlanningCard ── */
 function PlanningCard({ item, index }) {
   return (
     <div className="stack-card" style={{ zIndex: 4 - index }}>
@@ -58,16 +53,13 @@ function PlanningCard({ item, index }) {
             textDecoration: item.done ? 'line-through' : 'none',
             opacity: item.done ? 0.5 : 1,
           }}>{item.tache}</p>
-          <p style={{
-            fontSize: 11, color: 'var(--text-hint)',
-            marginTop: 2, fontWeight: 500,
-          }}>{item.heure}</p>
+          <p style={{ fontSize: 11, color: 'var(--text-hint)', marginTop: 2, fontWeight: 500 }}>
+            {item.heure}
+          </p>
         </div>
         <div style={{
           width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-          background: item.done
-            ? 'linear-gradient(135deg,#F7A07A,#E8547A)'
-            : 'transparent',
+          background: item.done ? 'linear-gradient(135deg,#F7A07A,#E8547A)' : 'transparent',
           border: item.done ? 'none' : '2px solid rgba(232,84,122,0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 11, color: 'white', fontWeight: 700,
@@ -79,15 +71,14 @@ function PlanningCard({ item, index }) {
   )
 }
 
+/* ── ModuleBtn ── */
 function ModuleBtn({ mod, onClick }) {
   return (
     <button onClick={onClick} style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 8,
-      background: mod.color,
-      border: `1.5px solid ${mod.border}`,
-      borderRadius: 20, padding: '18px 12px',
-      cursor: 'pointer',
+      background: mod.color, border: `1.5px solid ${mod.border}`,
+      borderRadius: 20, padding: '18px 12px', cursor: 'pointer',
       transition: 'transform .15s, box-shadow .15s',
       flex: '1 1 calc(50% - 6px)', minWidth: 0,
     }}
@@ -104,12 +95,34 @@ function ModuleBtn({ mod, onClick }) {
 
 /* ── Page principale ── */
 export default function HomePage() {
-  const { profile, signOut } = useAuth()
+  const { profile, user, signOut } = useAuth()
   const navigate = useNavigate()
+  const [planningTasks, setPlanningTasks] = useState([])
+  const [planningLoading, setPlanningLoading] = useState(true)
 
   const nom     = profile?.mama_name || 'maman'
   const message = MESSAGES_MOTIVANTS[new Date().getDay() % MESSAGES_MOTIVANTS.length]
   const date    = new Date().toLocaleDateString('fr-MA', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  // Charger le planning du jour depuis Supabase
+  useEffect(() => {
+    async function loadPlanning() {
+      if (!user) return
+      const today = new Date().toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('plannings')
+        .select('tasks')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .single()
+      setPlanningTasks(data?.tasks || [])
+      setPlanningLoading(false)
+    }
+    loadPlanning()
+  }, [user])
+
+  const doneCount = planningTasks.filter(t => t.done).length
+  const previewTasks = planningTasks.slice(0, 4) // max 4 sur le dashboard
 
   return (
     <div className="app-shell">
@@ -127,9 +140,7 @@ export default function HomePage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ fontSize: 13, color: 'rgba(109,68,85,.7)', marginBottom: 3 }}>{getGreeting()},</p>
-             <h1 className="greeting-name">
-  {nom} 💜
-</h1>
+              <h1 className="greeting-name">{nom} 💜</h1>
               <p style={{ fontSize: 11, color: 'rgba(109,68,85,.6)', marginTop: 5 }}>{date}</p>
             </div>
             <button
@@ -155,34 +166,56 @@ export default function HomePage() {
             borderRadius: 16, padding: '12px 16px', marginTop: 16,
             backdropFilter: 'blur(10px)',
           }}>
-            <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.55, fontStyle: 'italic', fontFamily: 'var(--font-display)' }}>
-              "{message}"
-            </p>
+            <p className="motivant-text">"{message}"</p>
           </div>
         </div>
 
         {/* ── Planning du jour ── */}
         <section className="anim-1" style={{ width: '100%', marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-           <h2 className="section-title">Planning du jour 📅</h2>
+            <h2 className="section-title">Planning du jour 📅</h2>
             <button
               onClick={() => navigate('/planning')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--rose)', fontSize: 12, fontWeight: 600 }}>
-              Tout voir →
+              {planningTasks.length > 0 ? `Tout voir (${doneCount}/${planningTasks.length}) →` : 'Créer →'}
             </button>
           </div>
-         <div className="stack-container">
-  {PLANNING_DU_JOUR.map((item, i) => (
-    <PlanningCard key={i} item={item} index={i} />
-  ))}
-</div>
+
+          {planningLoading ? (
+            <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-hint)', fontSize: 13 }}>
+              Chargement…
+            </div>
+          ) : previewTasks.length > 0 ? (
+            <div className="stack-container">
+              {previewTasks.map((item, i) => (
+                <PlanningCard key={i} item={item} index={i} />
+              ))}
+            </div>
+          ) : (
+            /* Aucun planning → invite à en créer un */
+            <div
+              onClick={() => navigate('/planning')}
+              style={{
+                background: 'rgba(255,255,255,0.5)',
+                border: '1.5px dashed rgba(232,84,122,0.3)',
+                borderRadius: 20, padding: '24px 20px',
+                textAlign: 'center', cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🎙</div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 4 }}>
+                Aucun planning aujourd'hui
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+                Appuie pour dicter ta journée
+              </p>
+            </div>
+          )}
         </section>
 
         {/* ── Modules ── */}
         <section className="anim-2" style={{ width: '100%' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 12 }}>
-            Mes espaces 🌸
-          </h2>
+          <h2 className="section-title">Mes espaces 🌸</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {MODULES.map(mod => (
               <ModuleBtn key={mod.label} mod={mod} onClick={() => navigate(mod.path)} />
