@@ -3,8 +3,9 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import AuthPage       from './pages/AuthPage'
 import OnboardingPage from './pages/OnboardingPage'
 import HomePage       from './pages/HomePage'
+import PlanningPage from './pages/PlanningPage'
 import {
-  PlanningPage, RecettesPage, JuridiquePage, ActivitesPage, ProfilPage,
+  RecettesPage, JuridiquePage, ActivitesPage, ProfilPage,
 } from './pages/Placeholders'
 
 /* Spinner de chargement */
