@@ -4,7 +4,7 @@
  * Swipe BAS  → carte précédente redescend depuis le haut
  * Effet 3D rotateX pour donner l'impression d'un cylindre qui tourne
  */
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 
 const CARD_H    = 76   // hauteur d'une carte px
 const PEEK_Y    = 14   // portion visible des cartes adjacentes
@@ -17,14 +17,13 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
   const touchStartY       = useRef(null)
   const touchStartX       = useRef(null)
   const isDragging        = useRef(false)
-  const containerRef      = useRef(null)   // ← ref pour attach touch non-passif
   const n = tasks.length
   if (n === 0) return null
 
   /* ── Navigation ── */
   function goTo(i) { setIdx(((i % n) + n) % n); setDragY(0) }
 
-  /* ── Touch handlers (attachés via ref pour passive:false) ── */
+  /* ── Touch ── */
   function onTouchStart(e) {
     touchStartY.current = e.touches[0].clientY
     touchStartX.current = e.touches[0].clientX
@@ -38,7 +37,7 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
     if (!isDragging.current && Math.abs(dx) > Math.abs(dy)) return
     isDragging.current = true
     setDragY(dy)
-    e.preventDefault()   // fonctionne car passive:false
+    e.preventDefault()
   }
 
   function onTouchEnd(e) {
@@ -51,20 +50,6 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
     isDragging.current = false
   }
 
-  /* Attacher les listeners natifs (passive:false) pour pouvoir appeler preventDefault */
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    el.addEventListener('touchstart', onTouchStart, { passive: true  })
-    el.addEventListener('touchmove',  onTouchMove,  { passive: false })
-    el.addEventListener('touchend',   onTouchEnd,   { passive: true  })
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove',  onTouchMove)
-      el.removeEventListener('touchend',   onTouchEnd)
-    }
-  })   // re-bind à chaque render pour avoir idx/dragY frais dans les closures
-
   /* ── Style par carte ── */
   function cardStyle(i) {
     let offset = i - idx
@@ -74,7 +59,9 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
     const abs     = Math.abs(offset)
     if (abs > 1.5) return null   // invisible
 
+    // Position Y : la carte active est centrée, les autres peeking
     const baseY   = offset * (CARD_H - PEEK_Y) + dragY * 0.35
+    // Rotation 3D : les cartes éloignées s'inclinent
     const rotX    = -offset * TILT + (dragY / CARD_H) * TILT * 0.4
     const scale   = 1 - abs * 0.06
     const opacity = abs === 0 ? 1 : Math.max(0.3, 0.55 - abs * 0.1)
@@ -103,20 +90,22 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
   }
 
   return (
-    /* position:relative indispensable pour que les dots absolute se positionnent ici */
-    <div style={{ userSelect: 'none', position: 'relative' }}>
+    <div style={{ userSelect: 'none' }}>
 
-      {/* ── Zone des cartes ── */}
+      {/* ── Zone des cartes avec perspective globale ── */}
       <div
-        ref={containerRef}
         style={{
           position  : 'relative',
           height    : CARD_H + PEEK_Y * 2 + 8,
           marginBottom: 12,
           overflow  : 'hidden',
+          // Dégradés haut/bas pour couper proprement les cartes adjacentes
           WebkitMaskImage : 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)',
           maskImage       : 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)',
         }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         {tasks.map((task, i) => {
           const style = cardStyle(i)
@@ -206,35 +195,33 @@ export default function CardCarousel({ tasks, onToggle, onCardTap }) {
       </div>
 
       {/* ── Dots verticaux sur le côté droit ── */}
-      {n > 1 && (
-        <div style={{
-          display       : 'flex',
-          flexDirection : 'column',
-          alignItems    : 'center',
-          gap           : 4,
-          position      : 'absolute',
-          right         : 0,
-          top           : 0,
-          bottom        : 12,    // aligner avec la zone cartes (marginBottom: 12)
-          justifyContent: 'center',
-          paddingRight  : 2,
-        }}>
-          {tasks.map((_, i) => (
-            <div
-              key={i}
-              onClick={() => goTo(i)}
-              style={{
-                width       : 5,
-                borderRadius: 3,
-                height      : i === idx ? 20 : 5,
-                background  : i === idx ? 'var(--rose)' : 'rgba(232,84,122,0.22)',
-                transition  : 'all 0.3s ease',
-                cursor      : 'pointer',
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <div style={{
+        display       : 'flex',
+        flexDirection : 'column',
+        alignItems    : 'center',
+        gap           : 4,
+        position      : 'absolute',
+        right         : 0,
+        top           : 0,
+        bottom        : 0,
+        justifyContent: 'center',
+        paddingRight  : 2,
+      }}>
+        {tasks.map((_, i) => (
+          <div
+            key={i}
+            onClick={() => goTo(i)}
+            style={{
+              width       : 5,
+              borderRadius: 3,
+              height      : i === idx ? 20 : 5,
+              background  : i === idx ? 'var(--rose)' : 'rgba(232,84,122,0.22)',
+              transition  : 'all 0.3s ease',
+              cursor      : 'pointer',
+            }}
+          />
+        ))}
+      </div>
 
     </div>
   )
